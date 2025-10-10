@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función auxiliar para verificar si el usuario está autenticado
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Función auxiliar para obtener datos del usuario
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Función auxiliar para verificar si el usuario es admin
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+    
+    // Función auxiliar para verificar si el usuario es empleado
+    function isEmployee() {
+      return isSignedIn() && getUserData().role == 'employee';
+    }
+    
+    // Función auxiliar para verificar si el usuario pertenece a la sucursal
+    function belongsToStore(storeId) {
+      return getUserData().storeId == storeId;
+    }
+    
+    // ==================== COLECCIÓN DE USUARIOS ====================
+    match /users/{userId} {
+      // Solo admins pueden leer todos los usuarios
+      allow read: if isAdmin();
+      
+      // Los usuarios pueden leer su propia información
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      
+      // Solo admins pueden crear y actualizar usuarios
+      allow create, update: if isAdmin();
+      
+      // Nadie puede eliminar usuarios
+      allow delete: if false;
+    }
+    
+    // ==================== COLECCIÓN DE PRODUCTOS ====================
+    match /products/{productId} {
+      // Todos los usuarios autenticados pueden leer productos
+      allow read: if isSignedIn();
+      
+      // Todos los usuarios autenticados pueden crear productos (alta rápida)
+      allow create: if isSignedIn();
+      
+      // Solo admins pueden actualizar productos
+      allow update: if isAdmin();
+      
+      // Solo admins pueden eliminar productos
+      allow delete: if isAdmin();
+    }
+    
+    // ==================== COLECCIÓN DE VENTAS ====================
+    match /sales/{saleId} {
+      // Solo admins pueden leer todas las ventas
+      // Los empleados pueden leer ventas de su sucursal
+      allow read: if isAdmin() || 
+                     (isEmployee() && belongsToStore(resource.data.storeId));
+      
+      // Todos los usuarios autenticados pueden crear ventas
+      // Pero solo de su propia sucursal
+      allow create: if isSignedIn() && 
+                       belongsToStore(request.resource.data.storeId) &&
+                       request.resource.data.userId == request.auth.uid;
+      
+      // Solo admins pueden actualizar ventas
+      allow update: if isAdmin();
+      
+      // Solo admins pueden eliminar ventas
+      allow delete: if isAdmin();
+      
+      // ==================== SUBCOLECCIÓN DE ITEMS VENDIDOS ====================
+      match /soldItems/{itemId} {
+        // Heredar permisos de la venta padre
+        allow read: if isAdmin() || 
+                       (isEmployee() && belongsToStore(get(/databases/$(database)/documents/sales/$(saleId)).data.storeId));
+        
+        allow create: if isSignedIn() && 
+                         belongsToStore(get(/databases/$(database)/documents/sales/$(saleId)).data.storeId);
+        
+        allow update, delete: if isAdmin();
+      }
+    }
+    
+    // ==================== COLECCIÓN DE TRANSFERENCIAS DE INVENTARIO ====================
+    match /inventoryTransfers/{transferId} {
+      // Solo admins pueden leer, crear, actualizar y eliminar transferencias
+      allow read, write: if isAdmin();
+      
+      // ==================== SUBCOLECCIÓN DE ITEMS TRANSFERIDOS ====================
+      match /transferredItems/{itemId} {
+        // Solo admins pueden acceder
+        allow read, write: if isAdmin();
+      }
+    }
+    
+    // Denegar acceso a cualquier otra colección
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

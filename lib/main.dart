@@ -1,15 +1,45 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
-import 'package:mi_tienda_app/screens/home_screen.dart'; // Asegúrate que la ruta sea correcta
+
+// Core
+import 'package:mi_tienda_app/core/theme/app_theme.dart';
+
+// Services
+import 'package:mi_tienda_app/data/services/firebase_auth_service.dart';
+import 'package:mi_tienda_app/data/services/firestore_service.dart';
+import 'package:mi_tienda_app/data/services/offline_sync_service.dart';
+
+// Repositories
+import 'package:mi_tienda_app/data/repositories/product_repository.dart';
+import 'package:mi_tienda_app/data/repositories/sale_repository.dart';
+
+// Providers
+import 'package:mi_tienda_app/presentation/providers/auth_provider.dart';
+import 'package:mi_tienda_app/presentation/providers/product_provider.dart';
+import 'package:mi_tienda_app/presentation/providers/cart_provider.dart';
+import 'package:mi_tienda_app/presentation/providers/sales_report_provider.dart';
+
+// Screens
+import 'package:mi_tienda_app/presentation/screens/login_screen.dart';
+import 'package:mi_tienda_app/presentation/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  // Habilitar persistencia offline de Firestore
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+
   runApp(const MyApp());
 }
 
@@ -18,164 +48,64 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Definimos nuestra paleta de colores
-    const primaryColor = Color(0xFF3A7CFF); // Un azul vibrante
-    const backgroundColor = Color(0xFF1E202C); // Un fondo oscuro desaturado
-    const cardColor = Color(0xFF252836); // Un color ligeramente más claro para las tarjetas
+    // Inicializar servicios
+    final authService = FirebaseAuthService();
+    final firestoreService = FirestoreService();
+    final offlineSyncService = OfflineSyncService(firestoreService);
+    
+    // Inicializar repositorios
+    final productRepository = ProductRepository(firestoreService);
+    final saleRepository = SaleRepository(firestoreService, offlineSyncService);
 
-    return MaterialApp(
-      title: 'Inventario Pro',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        primaryColor: primaryColor,
-        scaffoldBackgroundColor: backgroundColor,
-        textTheme: GoogleFonts.manropeTextTheme(Theme.of(context).textTheme).apply(
-          bodyColor: Colors.white,
-          displayColor: Colors.white,
+    // Iniciar sincronización automática
+    offlineSyncService.startAutoSync();
+
+    return MultiProvider(
+      providers: [
+        // Providers de autenticación
+        ChangeNotifierProvider(
+          create: (_) => AuthProvider(authService),
         ),
-        colorScheme: const ColorScheme.dark(
-          primary: primaryColor,
-          secondary: primaryColor,
-          background: backgroundColor,
-          surface: cardColor,
+        
+        // Providers de productos
+        ChangeNotifierProvider(
+          create: (_) => ProductProvider(productRepository),
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: backgroundColor,
-          elevation: 0,
-          centerTitle: true,
+        
+        // Providers de carrito
+        ChangeNotifierProvider(
+          create: (_) => CartProvider(saleRepository),
         ),
-        cardTheme: CardThemeData(
-          color: cardColor,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+        
+        // Providers de reportes
+        ChangeNotifierProvider(
+          create: (_) => SalesReportProvider(saleRepository),
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: cardColor,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-          floatingLabelStyle: const TextStyle(color: primaryColor),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: primaryColor,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: primaryColor,
-        ),
-        tabBarTheme: const TabBarThemeData(
-          indicatorColor: primaryColor,
-          labelColor: primaryColor,
-          unselectedLabelColor: Colors.grey,
-        )
+      ],
+      child: MaterialApp(
+        title: 'Venta Rápida Minimarket',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        home: const AuthWrapper(),
       ),
-      // <<< OJO: Cambiamos la pantalla de inicio a un 'AuthWrapper' para manejar el login >>>
-      // Esto es una mejora: decide si mostrar Login o Home basado en el estado de autenticación
-      home: AuthWrapper(), 
     );
   }
 }
 
-// <<< WIDGET NUEVO Y MEJORADO para manejar el estado de autenticación >>>
+/// Wrapper de autenticación
+/// Decide qué pantalla mostrar según el estado de autenticación
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Este widget escuchará los cambios de autenticación
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        // Mientras espera, muestra un cargador
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        // Si tiene datos (el usuario está logueado), muestra HomeScreen
-        if (snapshot.hasData) {
-          return const HomeScreen();
-        }
-        // Si no, muestra la pantalla de Login
-        return const LoginPage();
-      },
-    );
+    final authProvider = context.watch<AuthProvider>();
+
+    if (authProvider.isAuthenticated) {
+      return const HomeScreen();
+    } else {
+      return const LoginScreen();
+    }
   }
 }
 
-
-// <<< LoginPage (solo la clase, el resto del archivo main.dart debe tener esto) >>>
-// Puedes mantener tu LoginPage como estaba, pero aquí te dejo una versión
-// que se adaptará mejor al nuevo tema.
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
-  @override
-  State<LoginPage> createState() => _LoginPageState();
-}
-
-class _LoginPageState extends State<LoginPage> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-
-  Future<void> signIn() async {
-    // ... (la lógica de signIn no cambia)
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Inventario Pro',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Inicia sesión para continuar',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-              ),
-              const SizedBox(height: 40),
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Contraseña'),
-                obscureText: true,
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: signIn,
-                child: const Text('Iniciar Sesión'),
-              )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// <<< NO OLVIDES >>>
-// Necesitarás importar FirebaseAuth para el AuthWrapper y LoginPage.
-// import 'package:firebase_auth/firebase_auth.dart';
