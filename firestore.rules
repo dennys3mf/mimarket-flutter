@@ -29,16 +29,17 @@ service cloud.firestore {
     
     // ==================== COLECCIÓN DE USUARIOS ====================
     match /users/{userId} {
-      // Solo admins pueden leer todos los usuarios
-      allow read: if isAdmin();
-      
-      // Los usuarios pueden leer su propia información
-      allow get: if isSignedIn() && request.auth.uid == userId;
-      
-      // Solo admins pueden crear y actualizar usuarios
+      // CORRECTO: Un usuario autenticado puede leer SU PROPIO documento.
+      // Esto rompe la dependencia circular.
+      allow get: if request.auth.uid == userId;
+
+      // CORRECTO: Solo un admin puede listar MÚLTIPLES documentos.
+      allow list: if isAdmin();
+
+      // Solo admins pueden crear y actualizar usuarios. (Sin cambios)
       allow create, update: if isAdmin();
       
-      // Nadie puede eliminar usuarios
+      // Nadie puede eliminar usuarios. (Sin cambios)
       allow delete: if false;
     }
     

@@ -1,50 +1,40 @@
-plugins {
-    id("com.android.application")
-    // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
-    // END: FlutterFire Configuration
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id("dev.flutter.flutter-gradle-plugin")
-}
-
+// android/app/build.gradle.kts (actualizado)
 android {
     namespace = "com.example.mi_tienda_app"
-    compileSdk = 36
+    compileSdk = 35  // Cambia de 36 a 35 (más estable)
     ndkVersion = "27.0.12077973"
 
-
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17  // Actualiza a 17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "17"  // Actualiza a 17
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.mi_tienda_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdkVersion(23)
-        targetSdkVersion(flutter.targetSdkVersion)
+        minSdk = 23  // Cambia minSdkVersion por minSdk
+        targetSdk = 35  // Cambia targetSdkVersion y usa 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         
+        // Habilita multidex (mejora rendimiento)
+        multiDexEnabled = true
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Optimizaciones para release
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
 
-flutter {
-    source = "../.."
+dependencies {
+    // Agrega multidex si tu app es grande
+    implementation("androidx.multidex:multidex:2.0.1")
 }
-

@@ -3,6 +3,7 @@ import 'package:mi_tienda_app/core/constants/app_constants.dart';
 import 'package:mi_tienda_app/data/models/product_model.dart';
 import 'package:mi_tienda_app/data/models/sale_model.dart';
 import 'package:mi_tienda_app/data/models/sale_item_model.dart';
+import 'package:mi_tienda_app/domain/entities/product_entity.dart';
 
 /// Servicio de Firestore para operaciones de base de datos
 class FirestoreService {
@@ -29,7 +30,7 @@ class FirestoreService {
   }
 
   /// Crear nuevo producto
-  Future<ProductModel> createProduct(ProductModel product) async {
+  Future<ProductEntity> createProduct(ProductModel product) async {
     try {
       // Usar el barcode como ID del documento para búsquedas rápidas
       final docRef = _firestore
